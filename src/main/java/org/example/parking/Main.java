@@ -1,6 +1,5 @@
 package org.example.parking;
 
-
 import org.example.parking.domain.Parking;
 import org.example.parking.model.Car;
 import org.example.parking.model.Moto;

@@ -1,12 +1,9 @@
 package org.example.parking.service;
 
 import org.example.parking.domain.Parking;
-import org.example.parking.model.ParkingSpot;
-import org.example.parking.model.Van;
-import org.example.parking.model.Vehicle;
+import org.example.parking.model.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * This class contains the business logic for parking/unparking vehicles.
@@ -19,27 +16,42 @@ public class ParkingService {
      */
     public boolean parkVehicle(Parking parking, Vehicle vehicle) {
 
-        // 1) If the vehicle can park on a BigSpot, try that first
-        if (vehicle.canParkOnBigSpot()) {
-            if (tryParkOnBigSpot(parking.getBigSpots(), vehicle)) {
-                return true;
-            }
-        }
-
-        // 2) If the vehicle is a Moto, try moto spots next
-        if (vehicle.canParkOnMotoSpot()) {
+        // If it's a Moto
+        if (vehicle instanceof Moto) {
+            // 1) Try moto spots
             if (tryParkOnSpots(parking.getMotoSpots(), vehicle)) {
                 return true;
             }
+            // 2) Then fallback on car spots
+            if (tryParkOnSpots(parking.getCarSpots(), vehicle)) {
+                return true;
+            }
+            // 3) Finally try big spots
+            return tryParkOnBigSpot(parking.getBigSpots(), vehicle);
         }
 
-        // 3) If it's a Van, try occupying 3 car spots
-        if (vehicle instanceof Van) {
-            return tryParkVanOnCarSpots(parking.getCarSpots(), (Van) vehicle);
-        } else {
-            // For a Car or a Moto fallback, try car spots
-            return tryParkOnSpots(parking.getCarSpots(), vehicle);
+        // If it's a Car
+        if (vehicle instanceof Car) {
+            // 1) Try car spots
+            if (tryParkOnSpots(parking.getCarSpots(), vehicle)) {
+                return true;
+            }
+            // 2) Then fallback on big spots
+            return tryParkOnBigSpot(parking.getBigSpots(), vehicle);
         }
+
+        // If it's a Van
+        if (vehicle instanceof Van) {
+            // 1) Prefer big spot first
+            if (tryParkOnBigSpot(parking.getBigSpots(), vehicle)) {
+                return true;
+            }
+            // 2) Otherwise occupy 3 car spots
+            return tryParkVanOnCarSpots(parking.getCarSpots(), (Van) vehicle);
+        }
+
+        // Otherwise (if we add a new vehicle type?), fallback
+        return false;
     }
 
     // Helper method to try parking on a big spot
@@ -73,7 +85,7 @@ public class ParkingService {
         // Collect free car spots that can fit a Van
         List<ParkingSpot> freeCarSpots = carSpots.stream()
                 .filter(s -> !s.isOccupied() && s.canFitVehicle(van))
-                .collect(Collectors.toList());
+                .toList();
 
         // If there are enough free spots (>= 3), occupy them
         if (freeCarSpots.size() >= required) {
