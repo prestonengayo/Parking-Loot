@@ -7,99 +7,116 @@ import org.example.parking.model.ParkingSpot;
 import org.example.parking.model.Van;
 import org.example.parking.model.Vehicle;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * This class contains the business logic for parking/unparking vehicles,
  * using an internal Map<Vehicle, List<ParkingSpot>> to track which spots
- * each vehicle occupies.
+ * each vehicle occupies. We also introduce a lock to ensure concurrency safety.
  */
 public class ParkingService {
 
-    // Map linking each parked Vehicle to the list of ParkingSpots it occupies
-    private Map<Vehicle, List<ParkingSpot>> vehicleToSpots = new HashMap<>();
+    /**
+     * vehicleToSpots is now a ConcurrentHashMap for thread-safe reads/writes.
+     * However, we still use a lock to ensure atomicity for operations that
+     * occupy multiple spots (e.g., vans).
+     */
+    private final Map<Vehicle, List<ParkingSpot>> vehicleToSpots = new ConcurrentHashMap<>();
+
+    /**
+     * Lock object used to synchronize park/unpark operations.
+     * Ensures we don't partially occupy spots for a Van if another thread intervenes.
+     */
+    private final Object lock = new Object();
 
     /**
      * Attempts to park the given vehicle in the provided parking.
      * Returns true if successful, false otherwise.
+     *
+     * The entire logic is wrapped in a synchronized(lock) block
+     * to ensure atomicity.
      */
     public boolean parkVehicle(Parking parking, Vehicle vehicle) {
+        synchronized (lock) {
+            // If it's a Moto
+            if (vehicle instanceof Moto) {
+                // 1) Try moto spots
+                List<ParkingSpot> used = tryParkOnSpots(parking.getMotoSpots(), vehicle);
+                if (used != null) {
+                    vehicleToSpots.put(vehicle, used);
+                    return true;
+                }
+                // 2) Then fallback on car spots
+                used = tryParkOnSpots(parking.getCarSpots(), vehicle);
+                if (used != null) {
+                    vehicleToSpots.put(vehicle, used);
+                    return true;
+                }
+                // 3) Finally try big spots
+                used = tryParkOnBigSpot(parking.getBigSpots(), vehicle);
+                if (used != null) {
+                    vehicleToSpots.put(vehicle, used);
+                    return true;
+                }
+                return false;
+            }
 
-        // If it's a Moto
-        if (vehicle instanceof Moto) {
-            // 1) Try moto spots
-            List<ParkingSpot> used = tryParkOnSpots(parking.getMotoSpots(), vehicle);
-            if (used != null) {
-                vehicleToSpots.put(vehicle, used);
-                return true;
+            // If it's a Car
+            if (vehicle instanceof Car) {
+                // 1) Try car spots
+                List<ParkingSpot> used = tryParkOnSpots(parking.getCarSpots(), vehicle);
+                if (used != null) {
+                    vehicleToSpots.put(vehicle, used);
+                    return true;
+                }
+                // 2) Then fallback on big spots
+                used = tryParkOnBigSpot(parking.getBigSpots(), vehicle);
+                if (used != null) {
+                    vehicleToSpots.put(vehicle, used);
+                    return true;
+                }
+                return false;
             }
-            // 2) Then fallback on car spots
-            used = tryParkOnSpots(parking.getCarSpots(), vehicle);
-            if (used != null) {
-                vehicleToSpots.put(vehicle, used);
-                return true;
+
+            // If it's a Van
+            if (vehicle instanceof Van) {
+                // 1) Prefer a big spot first
+                List<ParkingSpot> used = tryParkOnBigSpot(parking.getBigSpots(), vehicle);
+                if (used != null) {
+                    vehicleToSpots.put(vehicle, used);
+                    return true;
+                }
+                // 2) Otherwise occupy multiple car spots (e.g., 3)
+                used = tryParkVanOnCarSpots(parking.getCarSpots(), (Van) vehicle);
+                if (used != null) {
+                    vehicleToSpots.put(vehicle, used);
+                    return true;
+                }
+                return false;
             }
-            // 3) Finally try big spots
-            used = tryParkOnBigSpot(parking.getBigSpots(), vehicle);
-            if (used != null) {
-                vehicleToSpots.put(vehicle, used);
-                return true;
-            }
+
+            // Otherwise (if we add a new vehicle type?), fallback
             return false;
         }
-
-        // If it's a Car
-        if (vehicle instanceof Car) {
-            // 1) Try car spots
-            List<ParkingSpot> used = tryParkOnSpots(parking.getCarSpots(), vehicle);
-            if (used != null) {
-                vehicleToSpots.put(vehicle, used);
-                return true;
-            }
-            // 2) Then fallback on big spots
-            used = tryParkOnBigSpot(parking.getBigSpots(), vehicle);
-            if (used != null) {
-                vehicleToSpots.put(vehicle, used);
-                return true;
-            }
-            return false;
-        }
-
-        // If it's a Van
-        if (vehicle instanceof Van) {
-            // 1) Prefer a big spot first
-            List<ParkingSpot> used = tryParkOnBigSpot(parking.getBigSpots(), vehicle);
-            if (used != null) {
-                vehicleToSpots.put(vehicle, used);
-                return true;
-            }
-            // 2) Otherwise occupy multiple car spots (e.g., 3)
-            used = tryParkVanOnCarSpots(parking.getCarSpots(), (Van) vehicle);
-            if (used != null) {
-                vehicleToSpots.put(vehicle, used);
-                return true;
-            }
-            return false;
-        }
-
-        // Otherwise (if we add a new vehicle type?), fallback
-        return false;
     }
 
     /**
      * Unparks a vehicle by freeing all the spots it occupies, if any.
+     * Also synchronized to ensure atomic remove from the map.
      */
     public void unparkVehicle(Vehicle vehicle) {
-        List<ParkingSpot> spots = vehicleToSpots.get(vehicle);
-        if (spots != null && !spots.isEmpty()) {
-            // Free each occupied spot
-            for (ParkingSpot s : spots) {
-                s.free();
+        synchronized (lock) {
+            List<ParkingSpot> spots = vehicleToSpots.get(vehicle);
+            if (spots != null && !spots.isEmpty()) {
+                // Free each occupied spot
+                for (ParkingSpot s : spots) {
+                    s.free();
+                }
+                // Remove the vehicle from the map
+                vehicleToSpots.remove(vehicle);
             }
-            // Remove the vehicle from the map
-            vehicleToSpots.remove(vehicle);
         }
     }
 
@@ -152,7 +169,9 @@ public class ParkingService {
         return null;
     }
 
-
+    /**
+     * Returns the total number of spots currently occupied by any vans.
+     */
     public int getNumberOfSpotsOccupiedByVans() {
         int count = 0;
         for (Map.Entry<Vehicle, List<ParkingSpot>> entry : vehicleToSpots.entrySet()) {
@@ -162,6 +181,5 @@ public class ParkingService {
         }
         return count;
     }
-
 
 }
