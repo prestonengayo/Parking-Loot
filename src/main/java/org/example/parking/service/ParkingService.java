@@ -151,4 +151,17 @@ public class ParkingService {
         }
         return null;
     }
+
+
+    public int getNumberOfSpotsOccupiedByVans() {
+        int count = 0;
+        for (Map.Entry<Vehicle, List<ParkingSpot>> entry : vehicleToSpots.entrySet()) {
+            if (entry.getKey() instanceof Van) {
+                count += entry.getValue().size();
+            }
+        }
+        return count;
+    }
+
+
 }

@@ -52,6 +52,19 @@ public class Parking {
         return bigSpots;
     }
 
+    public boolean areMotoSpotsFull() {
+        return motoSpots.stream().allMatch(spot -> spot.isOccupied());
+    }
+
+    public boolean areCarSpotsFull() {
+        return carSpots.stream().allMatch(spot -> spot.isOccupied());
+    }
+
+    public boolean areBigSpotsFull() {
+        return bigSpots.stream().allMatch(spot -> spot.isOccupied());
+    }
+
+
     /**
      * Returns the total number of spots in the parking.
      */
