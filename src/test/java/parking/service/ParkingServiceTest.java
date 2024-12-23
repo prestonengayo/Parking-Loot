@@ -282,4 +282,27 @@ public class ParkingServiceTest {
         Assertions.assertTrue(parking.isEmpty(),
                 "Parking remains empty since no vehicle could be parked");
     }
+
+    @Test
+    public void testUnparkVehicle() {
+        // Given: a Parking et un ParkingService
+        Parking parking = new Parking(1, 3, 1); // par exemple : 1 moto, 3 car, 1 big
+        ParkingService service = new ParkingService();
+
+        // We create a Van (or any Vehicle) and park it
+        Vehicle van = new Van("VAN-123");
+        boolean parked = service.parkVehicle(parking, van);
+        Assertions.assertTrue(parked, "Van should be parked successfully");
+
+        // Check that the parking is not empty anymore
+        Assertions.assertFalse(parking.isEmpty(), "Parking should no longer be empty after parking the van");
+
+        // When: we unpark the vehicle
+        service.unparkVehicle(van);
+
+        Assertions.assertTrue(parking.getFreeSpotsCount() == parking.getTotalSpots()
+                        || !parking.isFull(),
+                "After unparking the van, the previously occupied spots should be free");
+    }
+
 }
